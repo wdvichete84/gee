@@ -1,0 +1,67 @@
+
+// add precipitation to map (first)
+//Map.addLayer(monthlyCol, palette, 'Precipitation')
+
+// 2nd PART - monthly average compare to historical mean monthly
+// compute average for each month across all years
+// i.e. Average July precipitation for all July months in the collection
+var longTermMeans = months.map(function(month) {
+    var filtered = monthlyCol.filter(ee.Filter.eq('month', month))
+    var monthlyMean = filtered.mean()
+    return monthlyMean.set('month', month)
+})
+var monthlyRainfall = ee.ImageCollection.fromImages(longTermMeans)
+
+// Check specific year 2014 data and compute monthly average
+var filtered = chirps
+  .filter(ee.Filter.date('2014-01-01', '2014-12-31'))
+  .filter(ee.Filter.bounds(geometry))
+  
+// Calculate monthly average rainfall
+var monthlyTotals = months
+  .map(function(month) {
+    return filtered
+      .filter(ee.Filter.calendarRange(month, month, 'month'))
+        .sum()
+        .set('month', month);
+});
+
+var observedRainfall = ee.ImageCollection.fromImages(monthlyTotals)
+print(observedRainfall)
+var visParams = {
+  min:0,
+  max: 2500,
+  palette: palette
+}
+//Map.addLayer(monthlyRainfall.sum(), visParams, 'Long Term')
+//Map.addLayer(observedRainfall.sum(), visParams , 'Current')
+
+// Calculate deviation in %
+
+var deviation = months.map(function(month) {
+  var longTermMean = monthlyRainfall
+    .filter(ee.Filter.eq('month', month)).first()
+  var monthlyObserved = observedRainfall
+    .filter(ee.Filter.eq('month', month)).first()
+  var deviation = (monthlyObserved.subtract(longTermMean)
+    .divide(longTermMean)).multiply(100)
+    .set('month', month)
+  return deviation
+})
+
+// plot chart (change the year of analysis)
+var chart = ui.Chart.image.series({
+  imageCollection: deviation, 
+  region: geometry, 
+  reducer: ee.Reducer.mean(), 
+  scale: 10000,
+  xProperty: 'month'
+}).setOptions({
+      interpolateNulls: true,
+      lineWidth: 1,
+      pointSize: 3,
+      title: 'Rainfall Deviation from Long-term Mean - 2014 (%)',
+      vAxis: {title: 'Deviation %'},
+      hAxis: {title: 'Month', gridlines: {count: 12}}
+});
+print(chart);
