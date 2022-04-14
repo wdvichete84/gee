@@ -1,1 +1,135 @@
+// Goggle Earth Engine
+// draw or import your geometry area of interest
+// do not duplicate the geometry
 
+var geometry = ee.FeatureCollection("users/williamvichete/SF_DA");
+   
+// script to get 
+// mounthly average NDVI in an area
+// specify the start and end  date
+var startDate = ee.Date('2008-01-01');
+var endDate = ee.Date('2010-01-01');
+
+print("Start Date: ", startDate);
+print("End Date: ", endDate);
+
+// NDVI
+// image collection
+var dataset = ee.ImageCollection('MODIS/006/MOD13Q1')
+  .filter(ee.Filter.date(startDate, endDate));
+
+// define the numbers of months between start and end date
+var diff = endDate.difference(startDate, 'month');
+
+// external require
+var batch = require('users/fitoprincipe/geetools:batch')
+var palettesGeneral = require('users/gena/packages:palettes');
+
+// center the map
+Map.centerObject(geometry, 5)
+
+// add Geometry to map
+Map.addLayer(geometry, {}, 'Geometry')
+
+// Scaled range up to 1
+var modisNDVI = dataset.select('NDVI');
+var scaledNDVI = modisNDVI.map(function(image){
+  return image.multiply(0.0001)
+  .copyProperties(image,['system:time_start','system:time_end']);
+});
+
+var triplets = scaledNDVI.map(function(image) {
+  var withStats = image.reduceRegions({
+  collection: geometry,
+  reducer: ee.Reducer.mean().setOutputs(['ndvi']),
+  scale: 250
+  }).map(function(feature) {
+    return feature.set('imageId', image.id())
+  })
+  return withStats
+}).flatten()
+
+// configure map visualization
+var palette = palettesGeneral.colorbrewer.RdYlGn[11];
+
+var ndviVis = {
+  min: 0.0,
+  max: 1.0,
+  palette: palette,
+};
+
+/ define NDVI average 
+var monthAvg = ee.List.sequence(0, diff).map(function(n) {
+  var start = ee.Date(startDate).advance(n, 'month');
+  var end = start.advance(1, 'month');
+  return ee.ImageCollection("MODIS/006/MOD13Q1")
+        .filterDate(start, end)
+        .mean()
+        .set('system:time_start', start.millis());
+});
+
+// create image collection from monthly average
+var collection = ee.ImageCollection(monthAvg);
+
+// clip images to the polygon boundary
+var clippedNdvi = collection.filter(ee.Filter.date(startDate, endDate))
+  .map(function(image) {
+    return ee.Image(image).clip(geometry)
+  })
+
+// Plotting chart of monthly avg Ndvi
+var title = 'Average Monthly NDVI of Geometry';
+
+var timeSeries = ui.Chart.image.seriesByRegion({
+    imageCollection: collection,
+    regions: geometry,
+    reducer: ee.Reducer.mean(),
+    scale: 250,
+    xProperty: 'system:time_start',
+    seriesProperty: 'label'
+  }).setChartType('ScatterChart')
+    .setOptions({
+      title: title,
+      vAxis: {title: '[NDVI]'},
+      hAxis: {title: 'Year'},
+      lineWidth: 1,
+      pointSize: 1,
+    });
+
+print(timeSeries);
+
+// Map first image of collection in the area of interest
+Map.addLayer(clippedNdvi.first(), ndviVis, 'Monthly NDVI')
+
+// Export image collection
+batch.Download.ImageCollection.toDrive(clippedNdvi, 'NDVI', 
+  {region: clippedNdvi,
+  crs: 'EPSG:4326',
+  type: 'float',
+  description: 'imageToDriveExample',
+  scale: 250,
+  fileFormat: 'GeoTIFF',
+});
+// William Vichete
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/
