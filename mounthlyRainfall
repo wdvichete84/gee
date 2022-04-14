@@ -1,1 +1,4 @@
 
+
+var sentinel = ee.ImageCollection("COPERNICUS/S2"),
+    geometry = ee.FeatureCollection("users/williamvichete/SF_DA");
