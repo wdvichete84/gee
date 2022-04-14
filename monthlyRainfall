@@ -1,3 +1,37 @@
+
+// create List of 30 years
+var lpaYears = ee.List.sequence(1985, 2021)
+var months = ee.List.sequence(1, 12)
+
+// clip images to the polygon boundary
+var clippedPrep = chirps.filter(ee.Filter.date(start, end))
+  .map(function(image) {
+    return ee.Image(image).clip(geometry)
+  })
+
+//Precipitation visualization
+var palette = palettesGeneral.misc.jet[7]
+var visPrep = {
+  min:0,
+  max: 500,
+  palette: palette
+};
+
+//create function to reduce to mean monthly
+Map.addLayer(clippedPrep.first(), palette, 'Prep')
+
+// Download images for a set region
+batch.Download.ImageCollection.toDrive(clippedPrep, 'Prep', 
+  {region: clippedPrep,
+  crs: 'EPSG:4326',
+  type: 'float',
+  description: 'imageToDriveExample',
+  scale: 30,
+  fileFormat: 'GeoTIFF',
+});
+
+
+
 // Map over the years and create a monthly totals collection
 var monthlyImages = lpaYears.map(function(year) {
   return months.map(function(month) {
