@@ -3,9 +3,14 @@
 // do not duplicate the geometry
 
 var geometry = ee.FeatureCollection("users/williamvichete/SF_DA");
-   
+
 // script to get 
-// mounthly average NDVI in an area
+// mean mounthly NDVI
+
+// GENERAL CONFIGURATION
+// select the area of interest
+var area = 'geometry'
+
 // specify the start and end  date
 var startDate = ee.Date('2008-01-01');
 var endDate = ee.Date('2010-01-01');
@@ -13,23 +18,23 @@ var endDate = ee.Date('2010-01-01');
 print("Start Date: ", startDate);
 print("End Date: ", endDate);
 
-// NDVI
-// image collection
-var dataset = ee.ImageCollection('MODIS/006/MOD13Q1')
-  .filter(ee.Filter.date(startDate, endDate));
-
 // define the numbers of months between start and end date
 var diff = endDate.difference(startDate, 'month');
 
-// external require
+// external 
 var batch = require('users/fitoprincipe/geetools:batch')
 var palettesGeneral = require('users/gena/packages:palettes');
 
-// center the map
+// center map
 Map.centerObject(geometry, 5)
 
 // add Geometry to map
 Map.addLayer(geometry, {}, 'Geometry')
+
+// NDVI
+// collection of images
+var dataset = ee.ImageCollection('MODIS/006/MOD13Q1')
+  .filter(ee.Filter.date(startDate, endDate));
 
 // Scaled range up to 1
 var modisNDVI = dataset.select('NDVI');
@@ -49,26 +54,25 @@ var triplets = scaledNDVI.map(function(image) {
   return withStats
 }).flatten()
 
-// configure map visualization
+// NDVI visualization
 var palette = palettesGeneral.colorbrewer.RdYlGn[11];
-
 var ndviVis = {
   min: 0.0,
   max: 1.0,
   palette: palette,
 };
 
-/ define NDVI average 
+// define average monthly NDVI 
 var monthAvg = ee.List.sequence(0, diff).map(function(n) {
   var start = ee.Date(startDate).advance(n, 'month');
   var end = start.advance(1, 'month');
-  return ee.ImageCollection("MODIS/006/MOD13Q1")
+  return ee.ImageCollection(scaledNDVI)
         .filterDate(start, end)
         .mean()
         .set('system:time_start', start.millis());
 });
 
-// create image collection from monthly average
+// create image collection from monthly avg
 var collection = ee.ImageCollection(monthAvg);
 
 // clip images to the polygon boundary
@@ -77,11 +81,11 @@ var clippedNdvi = collection.filter(ee.Filter.date(startDate, endDate))
     return ee.Image(image).clip(geometry)
   })
 
-// Plotting chart of monthly avg Ndvi
+// Plotting chart of monthly Rainfall
 var title = 'Average Monthly NDVI of Geometry';
 
 var timeSeries = ui.Chart.image.seriesByRegion({
-    imageCollection: collection,
+    imageCollection: clippedNdvi,
     regions: geometry,
     reducer: ee.Reducer.mean(),
     scale: 250,
@@ -97,11 +101,8 @@ var timeSeries = ui.Chart.image.seriesByRegion({
     });
 
 print(timeSeries);
-
-// Map first image of collection in the area of interest
-Map.addLayer(clippedNdvi.first(), ndviVis, 'Monthly NDVI')
-
-// Export image collection
+  
+// Download images for a set region
 batch.Download.ImageCollection.toDrive(clippedNdvi, 'NDVI', 
   {region: clippedNdvi,
   crs: 'EPSG:4326',
@@ -110,26 +111,48 @@ batch.Download.ImageCollection.toDrive(clippedNdvi, 'NDVI',
   scale: 250,
   fileFormat: 'GeoTIFF',
 });
-// William Vichete
 
+// add the first NDVI image to map
+Map.addLayer(clippedNdvi, ndviVis, 'NDVI');
 
+// Add bar Legend
+function createColorBar(titleText, palette, min, max) {
+// Legend Title
+var title = ui.Label({
+  value: titleText, 
+  style: {fontWeight: 'bold', textAlign: 'center', stretch: 'horizontal'}});
 
+// Colorbar
+var legend = ui.Thumbnail({
+  image: ee.Image.pixelLonLat().select(0),
+  params: {
+    bbox: [0, 0, 1, 0.1],
+    dimensions: '200x20',
+    format: 'png', 
+    min: 0, max: 1,
+    palette: palette},
+  style: {stretch: 'horizontal', margin: '8px 8px', maxHeight: '40px'},
+});
+  
+// Legend Labels
+var labels = ui.Panel({
+  widgets: [
+    ui.Label(min, {margin: '4px 10px',textAlign: 'left', stretch: 'horizontal'}),
+    ui.Label((min+max)/2, {margin: '4px 20px', textAlign: 'center', stretch: 'horizontal'}),
+    ui.Label(max, {margin: '4px 10px',textAlign: 'right', stretch: 'horizontal'})],
+  layout: ui.Panel.Layout.flow('horizontal')});
+  
+// Create a panel with all 3 widgets
+var legendPanel = ui.Panel({
+  widgets: [title, legend, labels],
+  style: {position: 'bottom-center', padding: '8px 15px'}
+})
+return legendPanel
+}
 
+// Call the function to create a colorbar legend  
+var colorBar = createColorBar('NDVI - First Image ', palette, 0, 1)
 
+Map.add(colorBar)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/
+/// William Vichete
