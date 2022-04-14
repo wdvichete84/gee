@@ -1,3 +1,17 @@
+// Map over the years and create a monthly totals collection
+var monthlyImages = lpaYears.map(function(year) {
+  return months.map(function(month) {
+    var filtered = chirps
+      .filter(ee.Filter.calendarRange(year, year, 'year'))
+      .filter(ee.Filter.calendarRange(month, month, 'month'))
+    var monthly = filtered.sum()
+    return monthly.set({'month': month, 'year': year})
+  })
+}).flatten()
+
+// 1 image per month for entire long-period duratioon
+var monthlyCol = ee.ImageCollection.fromImages(monthlyImages)
+
 
 // add precipitation to map (first)
 //Map.addLayer(monthlyCol, palette, 'Precipitation')
