@@ -2,88 +2,97 @@
 // draw or import your geometry area of interest
 // do not duplicate the geometry
 
-var chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/PENTAD"),
+var sentinel = ee.ImageCollection("COPERNICUS/S2"),
     geometry = ee.FeatureCollection("users/williamvichete/SF_DA");
 
-// mounthly precipitation in an area
+// script to get 
+// selected area DEM (SRTM 30m resolution)
+
+// GENERAL CONFIGURATION
+// select the area of interest
+var area = 'geometry'
+
 // specify the start and end  date
-var startDate = ee.Date('2008-01-01');
-var endDate = ee.Date('2010-01-01');
+var start = '2008-01-01';
+var end = '2010-01-01';
 
-print("Start Date: ", startDate);
-print("End Date: ", endDate);
+print("Start Date: ", start);
+print("End Date: ", end);
 
-// define the numbers of months between start and end date
-var diff = endDate.difference(startDate, 'month');
-
-// external require
+// external 
 var batch = require('users/fitoprincipe/geetools:batch')
 var palettesGeneral = require('users/gena/packages:palettes');
 
+////////////////////////////////////////////////////////
+// DIGITAL ELEVATION MODEL
+// get the DEM of the area
+// change the max elevation according the region (visDem: max: elevation to change)
+var dataset = ee.Image('USGS/SRTMGL1_003');
+var elevation = dataset.select('elevation');
+var clippedDem = elevation.clip(geometry);
+var palette = palettesGeneral.kovesi.diverging_rainbow_bgymr_45_85_c67[7];
+var visDem = {
+  min:0,
+  max: 2000,
+  palette: palette
+};
 // center the map
 Map.centerObject(geometry, 5)
 
 // add Geometry to map
 Map.addLayer(geometry, {}, 'Geometry')
 
-// define monthly Rainfall 
-var monthSum = ee.List.sequence(0, diff).map(function(n) {
-  var start = ee.Date(startDate).advance(n, 'month');
-  var end = start.advance(1, 'month');
-  return ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY")
-        .filterDate(start, end)
-        .sum()
-        .set('system:time_start', start.millis());
+// export DEM to drive
+var exportDem = clippedDem.select('elevation')
+Export.image.toDrive({
+    image: exportDem,
+    description: 'demFile',
+    folder: 'Gee_project',
+    fileNamePrefix: 'demFile',
+    region: geometry,
+    scale: 30,
+    maxPixels: 2e10
+})
+// add DEM to map
+Map.addLayer(clippedDem, visDem, 'DEM');
+
+// Add bar Legend
+function createColorBar(titleText, palette, min, max) {
+// Legend Title
+var title = ui.Label({
+  value: titleText, 
+  style: {fontWeight: 'bold', textAlign: 'center', stretch: 'horizontal'}});
+
+// Colorbar
+var legend = ui.Thumbnail({
+  image: ee.Image.pixelLonLat().select(0),
+  params: {
+    bbox: [0, 0, 2000, 500],
+    dimensions: '200x20',
+    format: 'png', 
+    min: 0, max: 2000,
+    palette: palette},
+  style: {stretch: 'horizontal', margin: '8px 8px', maxHeight: '40px'},
 });
+  
+// Legend Labels
+var labels = ui.Panel({
+  widgets: [
+    ui.Label(min, {margin: '4px 10px',textAlign: 'left', stretch: 'horizontal'}),
+    ui.Label((min+max)/2, {margin: '4px 20px', textAlign: 'center', stretch: 'horizontal'}),
+    ui.Label(max, {margin: '4px 10px',textAlign: 'right', stretch: 'horizontal'})],
+  layout: ui.Panel.Layout.flow('horizontal')});
+  
+// Create a panel with all 3 widgets
+var legendPanel = ui.Panel({
+  widgets: [title, legend, labels],
+  style: {position: 'bottom-center', padding: '8px 15px'}
+})
+return legendPanel
+}
 
-// create image collection from monthly sum
-var collection = ee.ImageCollection(monthSum);
+// Call the function to create a colorbar legend  
+var colorBar = createColorBar('Digital Elevation Model (m)', palette, 0, 2000)
 
-// clip images to the polygon boundary
-var clippedRain = collection.filter(ee.Filter.date(startDate, endDate))
-  .map(function(image) {
-    return ee.Image(image).clip(geometry)
-  })
-
-// Plotting chart of monthly Rainfall
-var title = 'Mean Monthly Rainfall of Geometry';
-
-var timeSeries = ui.Chart.image.seriesByRegion({
-    imageCollection: collection,
-    regions: geometry,
-    reducer: ee.Reducer.mean(),
-    scale: 5000,
-    xProperty: 'system:time_start',
-    seriesProperty: 'label'
-  }).setChartType('ScatterChart')
-    .setOptions({
-      title: title,
-      vAxis: {title: '[mm]'},
-      hAxis: {title: 'Year'},
-      lineWidth: 1,
-      pointSize: 1,
-    });
-
-print(timeSeries);
-
-//Precipitation visualization
-var palette = palettesGeneral.misc.jet[7]
-var visPrep = {
-  min:0,
-  max: 300,
-  palette: palette
-};
-
-// Map first image of collection in the area of interest
-Map.addLayer(clippedRain.first(), visPrep, 'Monthly Rainfall')
-
-// Export image collection
-batch.Download.ImageCollection.toDrive(clippedRain, 'Rainfall', 
-  {region: clippedRain,
-  crs: 'EPSG:4326',
-  type: 'float',
-  description: 'imageToDriveExample',
-  scale: 5000,
-  fileFormat: 'GeoTIFF',
-});
+Map.add(colorBar)
 // William Vichete
